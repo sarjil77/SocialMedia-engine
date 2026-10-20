@@ -2,8 +2,8 @@
 bakery-social-engine — Tests for core modules.
 """
 
+
 import pytest
-from pathlib import Path
 
 
 class TestConfig:

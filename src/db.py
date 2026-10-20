@@ -7,13 +7,13 @@ Tracks every post through its lifecycle:
 
 from __future__ import annotations
 
-import aiosqlite
 import json
 import logging
 from datetime import datetime, timezone
 from enum import Enum
-from pathlib import Path
 from typing import Any, Optional
+
+import aiosqlite
 
 from src.config import DATA_DIR
 

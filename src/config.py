@@ -6,13 +6,11 @@ All secrets and tunables are loaded from .env / environment variables.
 
 from __future__ import annotations
 
-import os
-from pathlib import Path
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
 
 # ── Paths ────────────────────────────────────────────────────────────────────
 PROJECT_ROOT = Path(__file__).resolve().parent.parent

@@ -48,5 +48,6 @@ Return a JSON object with these exact fields:
 - "hook_text_overlay": string (3-6 word punchy hook)
 - "voiceover_script": string (10-second conversational Hinglish/Gujarati script)
 - "instagram_caption": string (engaging caption with CTA + 15 hashtags)
-- "recommended_broll_tag": one of "chocolate_pour", "oven_glow", "cream_swirl", "sprinkle_rain", "dough_knead", "fruit_slice", "none"
+- "recommended_broll_tag": one of "chocolate_pour", "oven_glow",
+  "cream_swirl", "sprinkle_rain", "dough_knead", "fruit_slice", "none"
 """

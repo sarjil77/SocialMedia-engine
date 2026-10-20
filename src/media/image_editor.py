@@ -77,9 +77,6 @@ def _create_drop_shadow(
     color: tuple[int, int, int, int] = SHADOW_COLOR,
 ) -> Image.Image:
     """Create a realistic drop shadow for a transparent PNG."""
-    # Create shadow layer
-    shadow = Image.new("RGBA", image.size, (0, 0, 0, 0))
-
     # Use the alpha channel of the original as shadow shape
     if image.mode == "RGBA":
         alpha = image.split()[3]

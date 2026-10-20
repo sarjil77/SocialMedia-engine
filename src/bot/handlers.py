@@ -15,7 +15,7 @@ import mimetypes
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from telegram import Update, Message
+from telegram import Message, Update
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
@@ -25,7 +25,7 @@ from telegram.ext import (
     filters,
 )
 
-from src.ai.analyzer import analyze_media, BakeryAnalysis
+from src.ai.analyzer import BakeryAnalysis, analyze_media
 from src.ai.tts import generate_voiceover
 from src.bot.keyboards import (
     approval_keyboard,
@@ -125,7 +125,6 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     - With optional text captions
     """
     message = update.message
-    settings = get_settings()
 
     # Show processing indicator
     processing_msg = await message.reply_text(
@@ -235,7 +234,7 @@ async def _process_media_group(context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
         # Get the processing message to edit
         bot = context.bot
-        processing_msg = await bot.edit_message_text(
+        await bot.edit_message_text(
             text=(
                 f"⏳ *Processing {len(media_paths)} media files...*\n"
                 "🤖 Running AI analysis with Gemini..."
