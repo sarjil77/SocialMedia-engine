@@ -1,0 +1,14 @@
+# bakery-social-engine
+
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+*.db
+data/
+dist/
+*.egg-info/
+.ruff_cache/
+.pytest_cache/
+.venv/
+venv/
