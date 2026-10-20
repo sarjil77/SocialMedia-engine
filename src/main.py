@@ -36,10 +36,24 @@ from src.publisher.instagram import publish_media
 
 
 def _setup_logging() -> None:
-    settings = get_settings()
+    if sys.platform == "win32":
+        try:
+            if hasattr(sys.stdout, "reconfigure"):
+                sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+            if hasattr(sys.stderr, "reconfigure"):
+                sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
+    try:
+        settings = get_settings()
+        log_level = getattr(logging, settings.log_level.upper(), logging.INFO)
+    except Exception:
+        log_level = logging.INFO
+
     logging.basicConfig(
-        level=getattr(logging, settings.log_level.upper(), logging.INFO),
-        format="%(asctime)s │ %(levelname)-8s │ %(name)-30s │ %(message)s",
+        level=log_level,
+        format="%(asctime)s | %(levelname)-8s | %(name)-30s | %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
         handlers=[
             logging.StreamHandler(sys.stdout),
@@ -112,7 +126,17 @@ async def main() -> None:
     _setup_logging()
     logger = logging.getLogger("main")
 
-    settings = get_settings()
+    from pydantic import ValidationError
+
+    try:
+        settings = get_settings()
+    except ValidationError as err:
+        logger.error("❌ Configuration error: Missing required environment variables!")
+        for error in err.errors():
+            field = ".".join(str(loc) for loc in error.get("loc", []))
+            logger.error("   - Missing: %s", field.upper())
+        logger.info("👉 Copy .env.example to .env and configure your API tokens to start.")
+        return
 
     logger.info("═══════════════════════════════════════════")
     logger.info("  🍰 Bakery Social Engine — Starting Up")
