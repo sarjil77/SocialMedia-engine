@@ -112,16 +112,18 @@ async def remove_background(input_path: Path, output_path: Path | None = None) -
     Returns path to the PNG with transparent background.
     """
     # Import rembg lazily (heavy model loading)
+    from rembg import new_session
     from rembg import remove as rembg_remove
 
     settings = get_settings()
     if output_path is None:
         output_path = settings.temp_dir / f"nobg_{uuid.uuid4().hex[:8]}.png"
 
-    logger.info("Removing background from: %s", input_path.name)
+    logger.info("Removing background from: %s (using u2netp)", input_path.name)
 
+    session = new_session("u2netp")
     input_image = Image.open(input_path)
-    result = rembg_remove(input_image)
+    result = rembg_remove(input_image, session=session)
     result.save(str(output_path), "PNG")
 
     logger.info("Background removed: %s", output_path.name)
