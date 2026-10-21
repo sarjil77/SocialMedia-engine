@@ -26,6 +26,7 @@ import sys
 import time
 from pathlib import Path
 
+from dotenv import load_dotenv
 from PIL import Image, ImageDraw
 
 # Ensure project root is in sys.path
@@ -33,10 +34,12 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+# Load .env first so real keys are never overridden
+load_dotenv(PROJECT_ROOT / ".env")
+
 # Provide safe defaults if running in pure mock/demo mode without .env
 os.environ.setdefault("TELEGRAM_BOT_TOKEN", "mock_demo_token")
 os.environ.setdefault("TELEGRAM_ADMIN_CHAT_ID", "123456789")
-os.environ.setdefault("GEMINI_API_KEY", "")
 
 # Windows console UTF-8 fix
 if sys.platform == "win32":
@@ -130,7 +133,7 @@ async def run_demo(
 
     if has_gemini and not is_mock:
         from src.ai.analyzer import analyze_media
-        print("  Calling Google Gemini 2.5 Flash API...")
+        print(f"  Calling Google {settings.gemini_model} API...")
         analysis = await analyze_media([sample_file], context_text=custom_caption)
     else:
         print("  (Using high-accuracy local mock mode — no Gemini key required)")

@@ -38,7 +38,7 @@ class Settings(BaseSettings):
 
     # ── Google Gemini ────────────────────────────────────────────────────
     gemini_api_key: str = Field(..., description="Google AI Gemini API key")
-    gemini_model: str = Field("gemini-2.5-flash", description="Gemini model name")
+    gemini_model: str = Field("gemini-3.5-flash-lite", description="Gemini model name")
 
     # ── Meta / Instagram ─────────────────────────────────────────────────
     meta_access_token: str = Field("", description="Meta Graph API long-lived token")

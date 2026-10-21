@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 import random
+import re
 import uuid
 from pathlib import Path
 from typing import Optional
@@ -26,9 +27,19 @@ logger = logging.getLogger(__name__)
 # ── Constants ────────────────────────────────────────────────────────────────
 FEED_SIZE = (1080, 1080)      # Instagram feed square
 STORY_SIZE = (1080, 1920)     # Instagram story / reel cover
-SHADOW_OFFSET = (12, 12)
-SHADOW_BLUR = 25
-SHADOW_COLOR = (0, 0, 0, 100)
+SHADOW_OFFSET = (0, 8)
+SHADOW_BLUR = 20
+SHADOW_COLOR = (0, 0, 0, 90)
+
+
+def _clean_text_for_pil(text: str) -> str:
+    """Strip emoji characters that cause unrendered [] boxes in FreeType."""
+    emoji_pattern = re.compile(
+        "[\U00010000-\U0010ffff\U00002600-\U000027BF\U00002300-\U000023FF"
+        "\U00002B50-\U00002B55\U0000200D\U0000FE0F]",
+        flags=re.UNICODE,
+    )
+    return emoji_pattern.sub("", text).strip()
 
 
 def _get_font(size: int, bold: bool = True) -> ImageFont.FreeTypeFont:
@@ -36,20 +47,32 @@ def _get_font(size: int, bold: bool = True) -> ImageFont.FreeTypeFont:
     settings = get_settings()
     font_dir = settings.fonts_dir
 
-    candidates = [
-        font_dir / "Montserrat-ExtraBold.ttf",
-        font_dir / "Montserrat-Bold.ttf",
-        font_dir / "Poppins-Bold.ttf",
-    ] if bold else [
-        font_dir / "Montserrat-Regular.ttf",
-        font_dir / "Poppins-Regular.ttf",
-    ]
+    if bold:
+        candidates = [
+            font_dir / "Montserrat-ExtraBold.ttf",
+            font_dir / "Montserrat-Bold.ttf",
+            font_dir / "Poppins-Bold.ttf",
+        ]
+    else:
+        candidates = [
+            font_dir / "Montserrat-Regular.ttf",
+            font_dir / "Montserrat-Bold.ttf",
+            font_dir / "Poppins-Regular.ttf",
+        ]
 
     for path in candidates:
         if path.exists():
-            return ImageFont.truetype(str(path), size)
+            try:
+                return ImageFont.truetype(str(path), size)
+            except Exception:
+                continue
 
-    logger.warning("No custom font found, using Pillow default")
+    for ttf in font_dir.glob("*.ttf"):
+        try:
+            return ImageFont.truetype(str(ttf), size)
+        except Exception:
+            continue
+
     try:
         return ImageFont.truetype("arial.ttf", size)
     except OSError:
@@ -57,16 +80,29 @@ def _get_font(size: int, bold: bool = True) -> ImageFont.FreeTypeFont:
 
 
 def _pick_background(category: str | None = None) -> Optional[Path]:
-    """Pick a background image from assets/backgrounds/."""
+    """Pick a high-end commercial background image from assets/backgrounds/."""
     settings = get_settings()
     bg_dir = settings.backgrounds_dir
+
+    if category == "CUSTOM_CAKE":
+        preferred = ["marble_dark_luxury.jpg", "marble_white_clean.jpg", "rustic_wood_warm.jpg"]
+    elif category == "DAILY_SNACK":
+        preferred = ["rustic_wood_warm.jpg", "marble_white_clean.jpg", "marble_dark_luxury.jpg"]
+    elif category == "FESTIVAL_SPECIAL":
+        preferred = ["marble_dark_luxury.jpg", "rustic_wood_warm.jpg"]
+    else:
+        preferred = ["marble_dark_luxury.jpg", "rustic_wood_warm.jpg", "marble_white_clean.jpg"]
+
+    for name in preferred:
+        path = bg_dir / name
+        if path.exists():
+            return path
 
     backgrounds = list(bg_dir.glob("*.jpg")) + list(bg_dir.glob("*.png"))
     if not backgrounds:
         logger.warning("No background images found in %s", bg_dir)
         return None
 
-    # TODO: Category-based selection logic
     return random.choice(backgrounds)
 
 
@@ -76,8 +112,7 @@ def _create_drop_shadow(
     blur: int = SHADOW_BLUR,
     color: tuple[int, int, int, int] = SHADOW_COLOR,
 ) -> Image.Image:
-    """Create a realistic drop shadow for a transparent PNG."""
-    # Use the alpha channel of the original as shadow shape
+    """Create a subtle ambient drop shadow for edge blending."""
     if image.mode == "RGBA":
         alpha = image.split()[3]
         shadow_shape = Image.new("RGBA", image.size, color)
@@ -85,20 +120,16 @@ def _create_drop_shadow(
     else:
         shadow_shape = Image.new("RGBA", image.size, color)
 
-    # Apply blur
     shadow_shape = shadow_shape.filter(ImageFilter.GaussianBlur(blur))
 
-    # Create canvas with space for shadow
     canvas_w = image.width + abs(offset[0]) + blur * 2
     canvas_h = image.height + abs(offset[1]) + blur * 2
     canvas = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
 
-    # Paste shadow offset
     sx = blur + max(0, offset[0])
     sy = blur + max(0, offset[1])
     canvas.paste(shadow_shape, (sx, sy))
 
-    # Paste original on top
     ix = blur + max(0, -offset[0])
     iy = blur + max(0, -offset[1])
     canvas.paste(image, (ix, iy), image if image.mode == "RGBA" else None)
@@ -106,12 +137,43 @@ def _create_drop_shadow(
     return canvas
 
 
+def _create_tabletop_contact_shadow(
+    product_w: int,
+    product_h: int,
+) -> tuple[Image.Image, int, int]:
+    """
+    Generate realistic multi-stage ground contact shadow for the tabletop.
+    Returns: (shadow_image, offset_x_rel, offset_y_rel)
+    """
+    shadow_w = int(product_w * 1.15)
+    shadow_h = max(35, int(product_w * 0.25))
+    pad = 40
+    total_w = shadow_w + pad * 2
+    total_h = shadow_h + pad * 2
+
+    canvas = Image.new("RGBA", (total_w, total_h), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(canvas)
+
+    # Stage 1: Soft diffuse ambient cast shadow
+    bbox_soft = [pad, pad, pad + shadow_w, pad + shadow_h]
+    draw.ellipse(bbox_soft, fill=(0, 0, 0, 110))
+
+    # Stage 2: Sharp ambient occlusion contact shadow directly under base
+    inner_w = int(shadow_w * 0.75)
+    inner_h = int(shadow_h * 0.45)
+    cx, cy = pad + shadow_w // 2, pad + shadow_h // 2
+    bbox_sharp = [cx - inner_w // 2, cy - inner_h // 2, cx + inner_w // 2, cy + inner_h // 2]
+    draw.ellipse(bbox_sharp, fill=(0, 0, 0, 190))
+
+    canvas = canvas.filter(ImageFilter.GaussianBlur(16))
+    return canvas, -(pad + (shadow_w - product_w) // 2), -(pad + shadow_h // 2)
+
+
 async def remove_background(input_path: Path, output_path: Path | None = None) -> Path:
     """
     Remove background from a product photo using rembg.
     Returns path to the PNG with transparent background.
     """
-    # Import rembg lazily (heavy model loading)
     from rembg import new_session
     from rembg import remove as rembg_remove
 
@@ -138,18 +200,8 @@ async def composite_product_image(
     output_path: Path | None = None,
 ) -> Path:
     """
-    Composite a product photo (with transparent background) onto a luxury
-    template background with drop shadow, typography, and brand watermark.
-
-    Args:
-        product_path: Path to PNG with transparent background.
-        hook_text: Text to overlay on the image.
-        category: Product category for background selection.
-        output_size: Output dimensions (default: 1080×1080 feed square).
-        output_path: Where to save the final image.
-
-    Returns:
-        Path to the composited image.
+    Composite product onto a luxury photography template with realistic contact shadows,
+    cinematic lighting vignette, and bold modern bakery typography.
     """
     settings = get_settings()
     if output_path is None:
@@ -160,52 +212,110 @@ async def composite_product_image(
     if bg_path:
         canvas = Image.open(bg_path).convert("RGBA")
         canvas = canvas.resize(output_size, Image.LANCZOS)
-        logger.info("Using background: %s", bg_path.name)
+        logger.info("Using luxury background: %s", bg_path.name)
     else:
-        # Elegant gradient fallback
         canvas = _create_gradient_background(output_size, category)
         logger.info("Using gradient fallback background")
 
-    # ── Step 2: Product with shadow ──
+    # ── Step 2: Realistic Table Grounding ──
     product = Image.open(product_path).convert("RGBA")
 
-    # Scale product to fit ~65% of canvas width
-    max_product_w = int(output_size[0] * 0.65)
-    max_product_h = int(output_size[1] * 0.55)
-    product.thumbnail((max_product_w, max_product_h), Image.LANCZOS)
+    # Scale product to fit naturally on table (~62% width)
+    max_w = int(output_size[0] * 0.62)
+    max_h = int(output_size[1] * 0.52)
+    product.thumbnail((max_w, max_h), Image.LANCZOS)
 
-    # Add drop shadow
-    product_with_shadow = _create_drop_shadow(product)
+    # Position on countertop: base sits firmly at ~73% height
+    py_bottom = int(canvas.height * 0.73)
+    py = py_bottom - product.height
+    px = (canvas.width - product.width) // 2
 
-    # Center the product (slightly above center for text space)
-    px = (canvas.width - product_with_shadow.width) // 2
-    py = int((canvas.height - product_with_shadow.height) * 0.35)
-    canvas.paste(product_with_shadow, (px, py), product_with_shadow)
+    # Draw tabletop ground contact shadow
+    shadow_img, rel_x, rel_y = _create_tabletop_contact_shadow(product.width, product.height)
+    shadow_x = px + rel_x
+    shadow_y = py_bottom + rel_y
+    canvas.paste(shadow_img, (shadow_x, shadow_y), shadow_img)
 
-    # ── Step 3: Typography ──
+    # Draw product ambient edge shadow
+    body_shadow = _create_drop_shadow(product, offset=(0, 6), blur=16, color=(0, 0, 0, 80))
+    canvas.paste(body_shadow, (px - 16, py - 10), body_shadow)
+
+    # Paste actual sharp product on top
+    canvas.paste(product, (px, py), product)
+
+    # ── Step 3: Cinematic Bottom Vignette Gradient (for readable text) ──
+    vignette = Image.new("RGBA", output_size, (0, 0, 0, 0))
+    vdraw = ImageDraw.Draw(vignette)
+    vignette_start = int(canvas.height * 0.68)
+    for y in range(vignette_start, canvas.height):
+        progress = (y - vignette_start) / (canvas.height - vignette_start)
+        alpha = int(230 * (progress ** 1.3))
+        vdraw.line([(0, y), (canvas.width, y)], fill=(10, 8, 12, alpha))
+    canvas = Image.alpha_composite(canvas, vignette)
+
+    # ── Step 4: Luxury Typography & Badges ──
     draw = ImageDraw.Draw(canvas)
 
-    # Hook text — bold, centered, bottom third
-    font = _get_font(56)
-    text_bbox = draw.textbbox((0, 0), hook_text, font=font)
-    text_w = text_bbox[2] - text_bbox[0]
-    text_x = (canvas.width - text_w) // 2
-    text_y = int(canvas.height * 0.78)
+    # Top Badge (Artisanal Pill Badge with clean ASCII bullet)
+    category_labels = {
+        "CUSTOM_CAKE": "SIGNATURE CUSTOM CREATION",
+        "DAILY_SNACK": "FRESH FROM THE OVEN",
+        "FESTIVAL_SPECIAL": "LIMITED FESTIVAL SPECIAL",
+    }
+    raw_label = category_labels.get(category, "ARTISANAL BAKERY CREATION")
+    badge_label = f"•  {raw_label}  •"
+    badge_font = _get_font(21, bold=True)
+    bb = draw.textbbox((0, 0), badge_label, font=badge_font)
+    bw, bh = bb[2] - bb[0], bb[3] - bb[1]
+    bx = (canvas.width - bw) // 2
+    by = 50
+    pad_x, pad_y = 24, 10
+    draw.rounded_rectangle(
+        [bx - pad_x, by - pad_y, bx + bw + pad_x, by + bh + pad_y],
+        radius=20,
+        fill=(16, 12, 14, 190),
+        outline=(212, 175, 55, 220),
+        width=1,
+    )
+    draw.text((bx, by), badge_label, fill=(240, 225, 195), font=badge_font)
 
-    # Text shadow for readability
-    draw.text((text_x + 2, text_y + 2), hook_text, fill=(0, 0, 0, 150), font=font)
-    draw.text((text_x, text_y), hook_text, fill="white", font=font)
+    # Main Headline (Cleaned Hook Text without emoji box gltich)
+    clean_hook = _clean_text_for_pil(hook_text).upper()
+    if not clean_hook:
+        clean_hook = "HANDCRAFTED DELIGHT"
 
-    # ── Step 4: Brand watermark ──
+    title_font = _get_font(44, bold=True)
+    tb = draw.textbbox((0, 0), clean_hook, font=title_font)
+    tw = tb[2] - tb[0]
+    if tw > canvas.width - 120:
+        title_font = _get_font(36, bold=True)
+        tb = draw.textbbox((0, 0), clean_hook, font=title_font)
+        tw = tb[2] - tb[0]
+
+    tx = (canvas.width - tw) // 2
+    ty = int(canvas.height * 0.83)
+
+    # Title shadow + text
+    draw.text((tx + 2, ty + 2), clean_hook, fill=(0, 0, 0, 200), font=title_font)
+    draw.text((tx, ty), clean_hook, fill="white", font=title_font)
+
+    # Sub-tagline / CTA
+    cta_text = "Handcrafted Fresh Daily • DM or WhatsApp to Pre-Order"
+    cta_font = _get_font(22, bold=False)
+    cb = draw.textbbox((0, 0), cta_text, font=cta_font)
+    cw = cb[2] - cb[0]
+    cx = (canvas.width - cw) // 2
+    cy = ty + (tb[3] - tb[1]) + 16
+    draw.text((cx, cy), cta_text, fill=(225, 205, 175), font=cta_font)
+
+    # ── Step 5: Brand watermark ──
     logo_path = settings.overlays_dir / "logo.png"
     if logo_path.exists():
         logo = Image.open(logo_path).convert("RGBA")
-        logo.thumbnail((120, 120), Image.LANCZOS)
-        # Bottom-right corner with padding
-        lx = canvas.width - logo.width - 30
-        ly = canvas.height - logo.height - 30
+        logo.thumbnail((110, 110), Image.LANCZOS)
+        lx = canvas.width - logo.width - 35
+        ly = 45
         canvas.paste(logo, (lx, ly), logo)
-        logger.info("Brand watermark applied")
     else:
         logger.debug("No logo.png found in overlays/, skipping watermark")
 
@@ -215,6 +325,7 @@ async def composite_product_image(
 
     logger.info("Composite image saved: %s", output_path.name)
     return output_path
+
 
 
 def _create_gradient_background(
